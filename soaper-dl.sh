@@ -243,17 +243,14 @@ download_all_episodes() {
     if [[ ! -f "$_SCRIPT_PATH/$_MEDIA_NAME/$_EPISODE_LINK_LIST" ]]; then
         print_error "Episode link list not found. Please run create_episode_list first."
     fi
-    # Remove any Windows-style carriage returns
+    # Remove Windows-style carriage returns
     sed -i 's/\r$//' "$_SCRIPT_PATH/$_MEDIA_NAME/$_EPISODE_LINK_LIST"
     
-    # Read the file line by line (using newline as the delimiter)
     while IFS= read -r line || [ -n "$line" ]; do
-        # Skip empty lines
         [[ -z "$line" ]] && continue
-        
-        # Use cut to split the line into episode identifier and link.
-        ep=$(echo "$line" | cut -d' ' -f1 | tr -d '[]')
-        link=$(echo "$line" | cut -d' ' -f2)
+        # Use sed to robustly extract the episode identifier and URL.
+        ep=$(echo "$line" | sed -n 's/^\[\(.*\)\].*/\1/p')
+        link=$(echo "$line" | sed -n 's/.*\] \(.*\)/\1/p')
         
         if [[ -z "$ep" || -z "$link" ]]; then
             print_error "Failed to parse line: $line"
@@ -267,6 +264,7 @@ download_all_episodes() {
         download_media "$link" "$ep"
     done < "$_SCRIPT_PATH/$_MEDIA_NAME/$_EPISODE_LINK_LIST"
 }
+
 
 
 download_media() {
