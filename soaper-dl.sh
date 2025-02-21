@@ -8,12 +8,12 @@
 #/ Options:
 #/   -n <name>               TV series or Movie name
 #/   -p <path>               media path, e.g: /tv_XXXXXXXX.html
-#/                           ingored when "-n" is enabled
+#/                           ignored when "-n" is enabled
 #/   -e <num1,num3-num4...>  optional, episode number to download
 #/                           e.g: episode number "3.2" means Season 3 Episode 2
-#/                           multiple episode numbers seperated by ","
+#/                           multiple episode numbers separated by ","
 #/                           episode range using "-"
-#/   -l                      optional, list video or subtitle link without downloading
+#/   -l                      optional, send video or subtitle link to IDM instead of downloading
 #/   -s                      optional, download subtitle only
 #/   -d                      enable debug mode
 #/   -h | --help             display this help message
@@ -23,6 +23,70 @@ set -u
 
 usage() {
     printf "%b\n" "$(grep '^#/' "$0" | cut -c4-)" && exit 1
+}
+
+# Helper function to send links to IDM
+send_to_idm() {
+    local link="$1"
+    print_info "Sending link to IDM: $link"
+    IDMan.exe /n /d "$link"
+}
+
+# Function: download HLS segments with aria2 concurrently and combine with ffmpeg
+download_hls_with_aria2() {
+    local m3u8_url="$1"
+    local output_file="$2"
+    local tmp_dir="$3"
+    mkdir -p "$tmp_dir"
+
+    print_info "Downloading HLS playlist from: $m3u8_url"
+    "$_CURL" -sS "$m3u8_url" -o "$tmp_dir/playlist.m3u8"
+    
+    # Extract segment URLs (lines not starting with '#')
+    grep -v '^#' "$tmp_dir/playlist.m3u8" > "$tmp_dir/segments.txt"
+    
+    # Determine base URL from m3u8 (in case segments are relative)
+    local base_url
+    base_url=$(echo "$m3u8_url" | sed 's|\(.*\/\).*|\1|')
+    
+    # Prepare file containing full segment URLs for aria2
+    > "$tmp_dir/aria2_segments.txt"
+    local seg count=0
+    while IFS= read -r seg; do
+        [[ -z "$seg" ]] && continue
+        if [[ "$seg" != http* ]]; then
+            seg="${base_url}${seg}"
+        fi
+        count=$((count+1))
+        echo "$seg" >> "$tmp_dir/aria2_segments.txt"
+    done < "$tmp_dir/segments.txt"
+    
+    print_info "Downloading $count segments concurrently with aria2..."
+    # Adjust concurrency here if needed, e.g. -j 50 -x 50 -s 50 for 50 concurrent downloads
+    aria2c -j 20 -x 20 -s 20 -i "$tmp_dir/aria2_segments.txt" -d "$tmp_dir"
+    
+    # Rename downloaded files to the expected "segment_XXXXX.ts" naming
+    local idx=1
+    while IFS= read -r seg; do
+         local fname
+         fname=$(basename "$seg")
+         if [ -f "$tmp_dir/$fname" ]; then
+              printf -v newname "segment_%05d.ts" "$idx"
+              mv "$tmp_dir/$fname" "$tmp_dir/$newname"
+              idx=$((idx+1))
+         else
+              print_warn "File $fname not found in $tmp_dir"
+         fi
+    done < "$tmp_dir/segments.txt"
+    
+    # Create a file list for ffmpeg concat demuxer using ls and sed
+    (cd "$tmp_dir" && ls -1v *.ts | sed "s/^/file '/; s/$/'/" > filelist.txt)
+    
+    print_info "Combining segments with ffmpeg..."
+    "$_FFMPEG" -f concat -safe 0 -i "$tmp_dir/filelist.txt" -c copy -v error -y "$output_file"
+    
+    # Clean up temporary files
+    rm -rf "$tmp_dir"
 }
 
 set_var() {
@@ -46,7 +110,7 @@ set_var() {
 
 set_args() {
     expr "$*" : ".*--help" > /dev/null && usage
-    while getopts ":hlsdn:x:p:e:" opt; do
+    while getopts ":hlsdn:p:e:" opt; do
         case $opt in
             n)
                 _INPUT_NAME="${OPTARG// /%20}"
@@ -78,23 +142,19 @@ set_args() {
 }
 
 print_info() {
-    # $1: info message
     printf "%b\n" "\033[32m[INFO]\033[0m $1" >&2
 }
 
 print_warn() {
-    # $1: warning message
     printf "%b\n" "\033[33m[WARNING]\033[0m $1" >&2
 }
 
 print_error() {
-    # $1: error message
     printf "%b\n" "\033[31m[ERROR]\033[0m $1" >&2
     exit 1
 }
 
 command_not_found() {
-    # $1: command name
     print_error "$1 command not found!"
 }
 
@@ -103,12 +163,10 @@ sed_remove_space() {
 }
 
 download_media_html() {
-    # $1: media link
     "$_CURL" -sS "${_HOST}${1}" > "$_SCRIPT_PATH/$_MEDIA_NAME/$_MEDIA_HTML"
 }
 
 get_media_name() {
-    # $1: media link
     "$_CURL" -sS "${_HOST}${1}" \
         | $_PUP ".panel-body h4 text{}" \
         | head -1 \
@@ -116,7 +174,6 @@ get_media_name() {
 }
 
 search_media_by_name() {
-    # $1: media name
     local d t len l n lb
     d="$("$_CURL" -sS "${_SEARCH_URL}$1")"
     t="$($_PUP ".thumbnail" <<< "$d")"
@@ -133,7 +190,6 @@ search_media_by_name() {
 }
 
 is_movie() {
-    # $1: media path
     [[ "$1" =~ ^/movie_.* ]] && return 0 || return 1
 }
 
@@ -150,7 +206,6 @@ download_source() {
 }
 
 download_episodes() {
-    # $1: episode number string
     local origel el uniqel se
     origel=()
     if [[ "$1" == *","* ]]; then
@@ -177,7 +232,6 @@ download_episodes() {
     done
 
     IFS=" " read -ra uniqel <<< "$(printf '%s\n' "${el[@]}" | sort -u -V | tr '\n' ' ')"
-
     [[ ${#uniqel[@]} == 0 ]] && print_error "Wrong episode number!"
 
     for e in "${uniqel[@]}"; do
@@ -186,7 +240,6 @@ download_episodes() {
 }
 
 download_episode() {
-    # $1: episode number
     local l
     l=$(grep "\[$1\] " "$_SCRIPT_PATH/$_MEDIA_NAME/$_EPISODE_LINK_LIST" \
         | awk -F '] ' '{print $2}')
@@ -195,8 +248,6 @@ download_episode() {
 }
 
 download_media() {
-    # $1: media link
-    # $2: media name
     local u d el sl p
     download_media_html "$1"
     is_movie "$_MEDIA_PATH" && u="GetMInfoAjax" || u="GetEInfoAjax"
@@ -220,15 +271,15 @@ download_media() {
             "$_CURL" "${sl}" > "$_SCRIPT_PATH/${_MEDIA_NAME}/${2}_${_SUBTITLE_LANG}.srt"
         fi
         if [[ -z ${_DOWNLOAD_SUBTITLE_ONLY:-} ]]; then
-            print_info "Downloading video $2..."
-            "$_FFMPEG" -i "$el" -c copy -v error -y "$_SCRIPT_PATH/${_MEDIA_NAME}/${2}.mp4"
+            print_info "Downloading video $2 with aria2..."
+            download_hls_with_aria2 "$el" "$_SCRIPT_PATH/${_MEDIA_NAME}/${2}.mp4" "$_SCRIPT_PATH/${_MEDIA_NAME}/hls_$2"
         fi
     else
         if [[ -z ${_DOWNLOAD_SUBTITLE_ONLY:-} ]]; then
-            echo "$el"
+            send_to_idm "$el"
         else
             if [[ -n "${sl:-}" ]]; then
-                echo "${sl}"
+                send_to_idm "$sl"
             fi
         fi
     fi
@@ -280,7 +331,6 @@ main() {
                 | grep "$_MEDIA_PATH" \
                 | awk -F '] ' '{print $2}' \
                 | sed -E 's/\//_/g')
-
     [[ "$_MEDIA_NAME" == "" ]] && _MEDIA_NAME="$(get_media_name "$_MEDIA_PATH")"
 
     download_source
