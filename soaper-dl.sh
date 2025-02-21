@@ -243,9 +243,11 @@ download_all_episodes() {
     if [[ ! -f "$_SCRIPT_PATH/$_MEDIA_NAME/$_EPISODE_LINK_LIST" ]]; then
         print_error "Episode link list not found. Please run create_episode_list first."
     fi
+    # Automatically remove carriage return characters
+    sed -i 's/\r$//' "$_SCRIPT_PATH/$_MEDIA_NAME/$_EPISODE_LINK_LIST"
+    
     while IFS=' ' read -r ep link; do
         [[ -z "$ep" || -z "$link" ]] && continue
-        # Remove the leading [ and trailing ] from the episode identifier.
         ep="${ep#[}"
         ep="${ep%]}"
         if [[ "$link" != /* ]]; then
