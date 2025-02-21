@@ -12,7 +12,7 @@
 - [Disclaimer](#disclaimer)
 
 ## Dependency
-
+- [aria2](https://github.com/aria2/aria2/)
 - [curl](https://curl.haxx.se/download.html)
 - [jq](https://stedolan.github.io/jq/)
 - [pup](https://github.com/EricChiang/pup)
@@ -140,3 +140,18 @@ The purpose of this script is to download TV series episodes and movies in order
 ---
 
 <a href="https://www.buymeacoffee.com/kevcui" target="_blank"><img src="https://cdn.buymeacoffee.com/buttons/v2/default-orange.png" alt="Buy Me A Coffee" height="60px" width="217px"></a>
+
+
+
+## Error
+```
+./install_dependencies.sh
+/usr/bin/env: ‘bash\r’: No such file or directory
+/usr/bin/env: use -[v]S to pass options in shebang lines
+```
+
+## FIX
+```
+sed -i 's/\r$//' install_dependencies.sh
+
+```
