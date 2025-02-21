@@ -3,16 +3,16 @@
 # Download TV series and Movies from Soaper using CLI
 #
 #/ Usage:
-#/   ./soaper-dl.sh [-n <name>] [-p <path>] [-e <num1,num2,num3-num4...|all>] [-l] [-s] [-d]
-#/         (Use "all" for the -e option to download all episodes)
+#/   ./soaper-dl.sh [-n <name>] [-p <path>] [-e <num1,num2,num3-num4...>] [-l] [-s] [-d]
 #/
 #/ Options:
 #/   -n <name>               TV series or Movie name
 #/   -p <path>               media path, e.g: /tv_XXXXXXXX.html
 #/                           ignored when "-n" is enabled
-#/   -e <num1,num3-num4...|all>  optional, episode number(s) to download or "all" to download every episode
+#/   -e <num1,num3-num4...>  optional, episode number to download
 #/                           e.g: episode number "3.2" means Season 3 Episode 2
-#/                           multiple episode numbers separated by "," or a range with "-"
+#/                           multiple episode numbers separated by ","
+#/                           episode range using "-"
 #/   -l                      optional, list video or subtitle link without downloading
 #/   -s                      optional, download subtitle only
 #/   -d                      enable debug mode
@@ -195,7 +195,7 @@ download_source() {
 }
 
 download_episodes() {
-    local origel el
+    local origel el uniqel se
     origel=()
     if [[ "$1" == *","* ]]; then
         IFS="," read -ra ADDR <<< "$1"
@@ -209,7 +209,6 @@ download_episodes() {
     el=()
     for i in "${origel[@]}"; do
         if [[ "$i" == *"-"* ]]; then
-            local se s e
             se=$(awk -F '-' '{print $1}' <<< "$i" | awk -F '.' '{print $1}')
             s=$(awk -F '-' '{print $1}' <<< "$i" | awk -F '.' '{print $2}')
             e=$(awk -F '-' '{print $2}' <<< "$i" | awk -F '.' '{print $2}')
@@ -221,7 +220,6 @@ download_episodes() {
         fi
     done
 
-    local uniqel
     IFS=" " read -ra uniqel <<< "$(printf '%s\n' "${el[@]}" | sort -u -V | tr '\n' ' ')"
     [[ ${#uniqel[@]} == 0 ]] && print_error "Wrong episode number!"
 
@@ -299,20 +297,6 @@ create_episode_list() {
     done
 }
 
-# New function to download all episodes
-download_all_episodes() {
-    local ep
-    if [[ ! -f "$_SCRIPT_PATH/$_MEDIA_NAME/$_EPISODE_LINK_LIST" ]]; then
-        print_error "Episode link list not found. Please run create_episode_list first."
-    fi
-    while IFS= read -r line; do
-        # Extract the episode identifier (e.g., "1.1" from "[1.1] /episode_link")
-        ep=$(echo "$line" | awk '{print $1}' | tr -d '[]')
-        print_info "Downloading episode $ep..."
-        download_episode "$ep"
-    done < "$_SCRIPT_PATH/$_MEDIA_NAME/$_EPISODE_LINK_LIST"
-}
-
 select_episodes_to_download() {
     cat "$_SCRIPT_PATH/$_MEDIA_NAME/$_EPISODE_TITLE_LIST" >&2
     echo -n "Which episode(s) to download: " >&2
@@ -344,16 +328,8 @@ main() {
 
     create_episode_list
 
-    # If no episode option is provided, ask the user.
     [[ -z "${_MEDIA_EPISODE:-}" ]] && _MEDIA_EPISODE=$(select_episodes_to_download)
-    
-    # If the episode option is "all", download every episode;
-    # otherwise, download only the specified episodes.
-    if [[ "$_MEDIA_EPISODE" == "all" ]]; then
-        download_all_episodes
-    else
-        download_episodes "$_MEDIA_EPISODE"
-    fi
+    download_episodes "$_MEDIA_EPISODE"
 }
 
 if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
