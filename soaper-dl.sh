@@ -13,7 +13,7 @@
 #/                           e.g: episode number "3.2" means Season 3 Episode 2
 #/                           multiple episode numbers separated by ","
 #/                           episode range using "-"
-#/   -l                      optional, send video or subtitle link to IDM instead of downloading
+#/   -l                      optional, list video or subtitle link without downloading
 #/   -s                      optional, download subtitle only
 #/   -d                      enable debug mode
 #/   -h | --help             display this help message
@@ -23,13 +23,6 @@ set -u
 
 usage() {
     printf "%b\n" "$(grep '^#/' "$0" | cut -c4-)" && exit 1
-}
-
-# Helper function to send links to IDM
-send_to_idm() {
-    local link="$1"
-    print_info "Sending link to IDM: $link"
-    IDMan.exe /n /d "$link"
 }
 
 # Function: download HLS segments with aria2 concurrently and combine with ffmpeg
@@ -62,11 +55,8 @@ download_hls_with_aria2() {
     done < "$tmp_dir/segments.txt"
     
     print_info "Downloading $count segments concurrently with aria2..."
-    # Adjust concurrency here if needed, e.g. -j 50 -x 50 -s 50 for 50 concurrent downloads
-    # Hide aria2 output by redirecting stdout and stderr to /dev/null
     aria2c -j 16 -x 16 -s 16 -i "$tmp_dir/aria2_segments.txt" -d "$tmp_dir" > /dev/null 2>&1
     
-    # Rename downloaded files to the expected "segment_XXXXX.ts" naming
     local idx=1
     while IFS= read -r seg; do
          local fname
@@ -80,13 +70,11 @@ download_hls_with_aria2() {
          fi
     done < "$tmp_dir/segments.txt"
     
-    # Create a file list for ffmpeg concat demuxer using ls and sed
     (cd "$tmp_dir" && ls -1v *.ts | sed "s/^/file '/; s/$/'/" > filelist.txt)
     
     print_info "Combining segments with ffmpeg..."
     "$_FFMPEG" -f concat -safe 0 -i "$tmp_dir/filelist.txt" -c copy -v error -y "$output_file"
     
-    # Clean up temporary files
     rm -rf "$tmp_dir"
 }
 
@@ -277,10 +265,10 @@ download_media() {
         fi
     else
         if [[ -z ${_DOWNLOAD_SUBTITLE_ONLY:-} ]]; then
-            send_to_idm "$el"
+            echo "$el"
         else
             if [[ -n "${sl:-}" ]]; then
-                send_to_idm "$sl"
+                echo "${sl}"
             fi
         fi
     fi
