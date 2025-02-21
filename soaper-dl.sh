@@ -246,21 +246,21 @@ download_all_episodes() {
     # Remove any Windows-style carriage returns
     sed -i 's/\r$//' "$_SCRIPT_PATH/$_MEDIA_NAME/$_EPISODE_LINK_LIST"
     
-    while read -r ep link; do
-        [[ -z "$ep" || -z "$link" ]] && continue
-        # Remove any carriage return characters from variables
-        ep="${ep//$'\r'/}"
-        link="${link//$'\r'/}"
-        # Remove leading [ and trailing ] from episode identifier.
-        ep="${ep#[}"
-        ep="${ep%]}"
-        if [[ "$link" != /* ]]; then
-            print_error "Wrong download link or episode not found for episode $ep!"
+    while IFS= read -r line || [[ -n "$line" ]]; do
+        # Skip empty lines
+        [[ -z "$line" ]] && continue
+        # Use a regex to extract the episode identifier and the link
+        if [[ "$line" =~ \[([^]]+)\]\ ([^[:space:]]+) ]]; then
+            ep="${BASH_REMATCH[1]}"
+            link="${BASH_REMATCH[2]}"
+        else
+            print_error "Line format invalid: $line"
         fi
         print_info "Downloading episode $ep..."
         download_media "$link" "$ep"
     done < "$_SCRIPT_PATH/$_MEDIA_NAME/$_EPISODE_LINK_LIST"
 }
+
 
 
 
