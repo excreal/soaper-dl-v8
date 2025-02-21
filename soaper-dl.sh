@@ -63,7 +63,7 @@ download_hls_with_aria2() {
     
     print_info "Downloading $count segments concurrently with aria2..."
     # Adjust concurrency here if needed, e.g. -j 50 -x 50 -s 50 for 50 concurrent downloads
-    aria2c -j 20 -x 20 -s 20 -i "$tmp_dir/aria2_segments.txt" -d "$tmp_dir"
+    aria2c -j 16 -x 16 -s 16 -i "$tmp_dir/aria2_segments.txt" -d "$tmp_dir"
     
     # Rename downloaded files to the expected "segment_XXXXX.ts" naming
     local idx=1
